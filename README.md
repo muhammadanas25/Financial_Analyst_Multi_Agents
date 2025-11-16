@@ -25,14 +25,14 @@ A production-grade multi-agent system for analyzing financial documents with 95%
 ## 📋 Technology Stack
 
 ### Core Technologies
-- **Orchestration**: LangGraph for multi-agent workflows
+- **Orchestration**: LangGraph for multi-agent workflows with state management
 - **Document Parsing**:
   - Docling (open-source document understanding)
   - PyMuPDF (fast, reliable for native PDFs)
   - pdfplumber (superior table extraction)
-- **Embeddings**: Sentence Transformers (with support for domain-specific models like Fin-E5)
-- **Vector Database**: ChromaDB (local dev), Weaviate/Pinecone (production)
-- **LLM**: OpenAI GPT-4 (primary), GPT-3.5-turbo (cost-optimized)
+- **Embeddings**: SentenceTransformers (all-MiniLM-L6-v2) for local embeddings
+- **Vector Database**: Weaviate with built-in hybrid search (Docker-based, free for local dev)
+- **LLM**: OpenAI GPT-4 (primary analysis), GPT-3.5-turbo (classification)
 
 ### Evaluation & Monitoring
 - **DeepEval**: Automated testing with 30+ metrics
@@ -41,7 +41,9 @@ A production-grade multi-agent system for analyzing financial documents with 95%
 
 ## 🚀 Quick Start
 
-### Installation
+**📖 Complete Setup Guide**: See **[SETUP.md](SETUP.md)** for detailed step-by-step instructions!
+
+### Installation (Summary)
 
 ```bash
 # Clone the repository
@@ -57,7 +59,56 @@ pip install -r requirements.txt
 
 # Set up environment variables
 cp .env.template .env
-# Edit .env and add your API keys
+# Edit .env and add your OPENAI_API_KEY
+
+# Start Weaviate vector database (requires Docker)
+docker-compose up -d
+
+# Verify Weaviate is running
+curl http://localhost:8080/v1/.well-known/ready
+```
+
+### Step 1: Process Documents
+
+```bash
+# Parse and chunk FAB Q1 2025 documents
+python examples/process_fab_documents.py
+
+# Output: Creates structured chunks in output/ directory
+# Time: ~2-3 minutes
+```
+
+### Step 2: Ingest to Vector Database
+
+```bash
+# Load documents into Weaviate with embeddings
+python scripts/ingest_to_weaviate.py
+
+# Output: 488 chunks ingested with hybrid search enabled
+# Time: ~5-10 minutes (first run downloads embedding model)
+```
+
+### Step 3: Query the System
+
+```bash
+# Interactive query system
+python scripts/query_system.py
+
+# Choose option 1 for example queries or option 2 for custom questions
+```
+
+**Example Query**:
+```
+Q: Calculate FAB's revenue growth from Q1 2024 to Q1 2025
+
+A: Based on FAB's financial statements, revenue grew from AED 11.8 billion
+in Q1 2024 to AED 12.5 billion in Q1 2025 [Document 1, Page 5].
+
+Calculation: ((12.5 - 11.8) / 11.8) * 100 = 5.93% growth
+
+✓ Confidence: 94.2%
+
+Agent Sequence: InputValidationAgent → RetrievalAgent → CalculationAgent → SynthesisAgent
 ```
 
 ### Environment Variables
@@ -65,19 +116,21 @@ cp .env.template .env
 Create a `.env` file with:
 
 ```env
-# Required
+# Required - Get from https://platform.openai.com/api-keys
 OPENAI_API_KEY=your_openai_api_key_here
 
 # Optional (for monitoring)
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=your_langsmith_api_key_here
+LANGCHAIN_TRACING_V2=false
+LANGCHAIN_API_KEY=
 LANGCHAIN_PROJECT=fab-financial-analyst
 
-# Configuration
+# Configuration (defaults are fine)
 PRIMARY_LLM_MODEL=gpt-4-turbo-preview
+FALLBACK_LLM_MODEL=gpt-3.5-turbo
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 CHUNK_SIZE=2048
 CHUNK_OVERLAP=200
+HYBRID_SEARCH_ALPHA=0.3
 ```
 
 ### Processing Documents
@@ -256,32 +309,44 @@ calculator = FinancialCalculator(
 ```
 Financial_Analyst_Multi_Agents/
 ├── config/
-│   └── config.py                  # Configuration management
-├── data/                          # Input documents
+│   └── config.py                      # Configuration management
+├── data/                              # Input PDF documents
 │   ├── FAB-Earnings-Presentation-Q1-2025.pdf
 │   ├── FAB-FS-Q1-2025-English.pdf
 │   └── FAB-Q1-2025-Results-Call.pdf
 ├── src/
-│   ├── agents/                    # Multi-agent implementations (TBD)
-│   ├── document_processing/
-│   │   ├── parsers.py            # Multi-parser system
-│   │   ├── metadata_extractor.py # Metadata extraction
-│   │   ├── chunker.py            # Element-based chunking
-│   │   └── ingestion_pipeline.py # Complete pipeline
-│   ├── retrieval/                 # Hybrid retrieval (TBD)
-│   ├── tools/
-│   │   └── financial_calculators.py  # Financial calculations
-│   ├── validation/                # Validation layers (TBD)
-│   └── utils/                     # Utility functions
+│   ├── agents/                        # ✅ Multi-agent system
+│   │   ├── state.py                  # LangGraph state schema
+│   │   ├── input_validation_agent.py # Query classification
+│   │   ├── retrieval_agent.py        # Hybrid search retrieval
+│   │   ├── calculation_agent.py      # Financial calculations
+│   │   ├── synthesis_agent.py        # Response generation
+│   │   └── workflow.py               # LangGraph orchestration
+│   ├── document_processing/           # ✅ Document pipeline
+│   │   ├── parsers.py                # Multi-parser system
+│   │   ├── metadata_extractor.py     # Metadata extraction
+│   │   ├── chunker.py                # Element-based chunking
+│   │   └── ingestion_pipeline.py     # Complete pipeline
+│   ├── retrieval/                     # ✅ Vector database
+│   │   └── vector_store.py           # Weaviate integration
+│   ├── tools/                         # ✅ Financial tools
+│   │   └── financial_calculators.py  # Decimal precision calcs
+│   ├── validation/                    # Validation layers (future)
+│   └── utils/                         # Utility functions
+├── scripts/                           # ✅ Execution scripts
+│   ├── ingest_to_weaviate.py         # Document ingestion
+│   └── query_system.py               # Interactive queries
 ├── examples/
-│   └── process_fab_documents.py  # Example usage
-├── tests/                         # Unit tests (TBD)
-├── output/                        # Processing results
-├── logs/                          # Application logs
-├── .env.template                  # Environment variables template
-├── requirements.txt               # Python dependencies
-├── execution_plan.md             # Comprehensive strategy document
-└── README.md                     # This file
+│   └── process_fab_documents.py      # Document processing example
+├── tests/                             # Unit tests (future)
+├── output/                            # Processing results
+├── logs/                              # Application logs
+├── docker-compose.yml                 # ✅ Weaviate setup
+├── .env.template                      # Environment variables template
+├── requirements.txt                   # Python dependencies
+├── SETUP.md                           # ✅ Complete setup guide
+├── execution_plan.md                  # Comprehensive strategy document
+└── README.md                          # This file
 ```
 
 ## 🧪 Testing & Validation
@@ -370,30 +435,64 @@ class PyMuPDFParser(PDFParser):
 
 **Implementation:** Multi-parser validation, calculation verification, quality scoring.
 
-## 🚧 Current Implementation Status
+## 🚧 Implementation Status
 
-### ✅ Completed
+### ✅ Phase 1: Document Processing (COMPLETED)
 
-- [x] Project structure and configuration
-- [x] Multi-parser document processing (Docling, PyMuPDF, pdfplumber)
+- [x] Project structure and configuration management
+- [x] Multi-parser system (Docling, PyMuPDF, pdfplumber)
+- [x] Automatic parser selection based on document type
 - [x] Metadata extraction for financial documents
-- [x] Element-based chunking strategy
+- [x] Element-based chunking strategy with table preservation
 - [x] Financial calculation tools with Decimal precision
-- [x] Complete ingestion pipeline
-- [x] Example scripts and documentation
+- [x] Complete document ingestion pipeline
+- [x] Processing example for FAB Q1 2025 documents
 
-### 🔄 In Progress / Future Work
+### ✅ Phase 2: Vector Database & Retrieval (COMPLETED)
 
-- [ ] Vector database integration (ChromaDB/Weaviate)
-- [ ] LangGraph multi-agent workflow
-- [ ] Specialized agents (Retrieval, Calculation, Analysis, Comparison, Validation)
-- [ ] Hybrid retrieval system (semantic + keyword search with BM25)
-- [ ] NLI-based hallucination detection
+- [x] Weaviate vector database integration
+- [x] Docker-based deployment (docker-compose)
+- [x] SentenceTransformers embedding pipeline
+- [x] Hybrid search (semantic + BM25) with α=0.3
+- [x] Temporal filtering (fiscal year, quarter)
+- [x] Metadata-based filtering
+- [x] Batch ingestion with quality validation
+- [x] Ingestion script for FAB documents
+
+### ✅ Phase 3: Multi-Agent System (COMPLETED)
+
+- [x] LangGraph state schema and workflow foundation
+- [x] Input Validation Agent (query classification, temporal extraction)
+- [x] Retrieval Agent (hybrid search with temporal filtering)
+- [x] Calculation Agent (tool-based calculations with verification)
+- [x] Synthesis Agent (response generation with citations)
+- [x] Complete workflow orchestration with conditional routing
+- [x] Confidence scoring and human-in-the-loop flagging
+- [x] Complete audit trails for compliance
+
+### ✅ Phase 4: Query System (COMPLETED)
+
+- [x] Interactive query interface
+- [x] Example query runner
+- [x] Formatted response with citations
+- [x] Confidence indicators
+- [x] Agent sequence visualization
+- [x] Reasoning step tracking
+- [x] Complete setup documentation (SETUP.md)
+
+### 🔄 Future Enhancements
+
+- [ ] NLI-based hallucination detection (DeBERTa)
 - [ ] Chain-of-Verification implementation
+- [ ] Calculation verification agent (secondary validation)
+- [ ] QA/Compliance agent with quality gates
 - [ ] Evaluation framework with DeepEval/Ragas
-- [ ] Test case generation and validation
+- [ ] Automated test case generation
 - [ ] API endpoints (FastAPI)
-- [ ] Production deployment configurations
+- [ ] Production deployment (Kubernetes)
+- [ ] LangSmith monitoring integration
+- [ ] Cost optimization (caching layer)
+- [ ] Fine-tuned domain-specific embeddings (Fin-E5)
 
 ## 📊 Performance Benchmarks
 
