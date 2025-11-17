@@ -46,7 +46,31 @@ class WeaviateVectorStore:
         self.use_openai_embeddings = use_openai_embeddings
 
         # Initialize Weaviate client
-        self.client = weaviate.connect_to_local(host=host)
+        # Parse host URL to extract hostname and port
+        import re
+        match = re.match(r'https?://([^:]+):(\d+)', host)
+        if match:
+            hostname, port = match.groups()
+            port = int(port)
+        else:
+            hostname = host.replace('http://', '').replace('https://', '').split(':')[0]
+            port = 8080
+
+        if hostname in ['localhost', '127.0.0.1']:
+            self.client = weaviate.connect_to_local(
+                host=hostname,
+                port=port,
+                grpc_port=50051
+            )
+        else:
+            self.client = weaviate.connect_to_custom(
+                http_host=hostname,
+                http_port=port,
+                http_secure=False,
+                grpc_host=hostname,
+                grpc_port=50051,
+                grpc_secure=False
+            )
 
         # Initialize embedding model if using local embeddings
         if not use_openai_embeddings:
@@ -246,14 +270,23 @@ class WeaviateVectorStore:
                 where_filter = Filter.by_property("fiscal_quarter").equal(fiscal_quarter)
 
         # Perform hybrid search
-        response = collection.query.hybrid(
-            query=query,
-            vector=query_vector,
-            alpha=alpha,
-            limit=limit,
-            return_metadata=MetadataQuery(score=True, explain_score=True),
-            where=where_filter
-        )
+        if where_filter:
+            response = collection.query.hybrid(
+                query=query,
+                vector=query_vector,
+                alpha=alpha,
+                limit=limit,
+                return_metadata=MetadataQuery(score=True, explain_score=True),
+                filters=where_filter
+            )
+        else:
+            response = collection.query.hybrid(
+                query=query,
+                vector=query_vector,
+                alpha=alpha,
+                limit=limit,
+                return_metadata=MetadataQuery(score=True, explain_score=True)
+            )
 
         # Format results
         results = []

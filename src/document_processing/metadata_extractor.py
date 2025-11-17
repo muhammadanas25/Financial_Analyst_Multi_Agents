@@ -16,10 +16,15 @@ class FinancialMetadataExtractor:
 
     # Common fiscal quarter patterns
     QUARTER_PATTERNS = [
-        r'Q([1-4])\s*(\d{4})',  # Q1 2024
-        r'([1-4])Q\s*(\d{4})',  # 1Q 2024
-        r'([1-4])\s*quarter\s*(\d{4})',  # 1st quarter 2024
-        r'quarter\s*([1-4])\s*(\d{4})',
+        r'Q([1-4])[\s-]*(\d{4})',  # Q1 2024, Q1-2024
+        r"Q([1-4])[''](\d{2})",  # Q1'25, Q1'2025
+        r'([1-4])Q[\s-]*(\d{4})',  # 1Q 2024, 1Q-2024
+        r'([1-4])[\s-]*quarter[\s-]*(\d{4})',  # 1st quarter 2024
+        r'quarter[\s-]*([1-4])[\s-]*(\d{4})',  # quarter 1 2024
+        (r'first-quarter[\s-]*(\d{4})', 1),  # first-quarter 2025 → Q1
+        (r'second-quarter[\s-]*(\d{4})', 2),
+        (r'third-quarter[\s-]*(\d{4})', 3),
+        (r'fourth-quarter[\s-]*(\d{4})', 4),
     ]
 
     # Fiscal year patterns
@@ -179,15 +184,32 @@ class FinancialMetadataExtractor:
         """Extract fiscal quarter (1-4)"""
         # Try filename first
         for pattern in self.QUARTER_PATTERNS:
-            match = re.search(pattern, filename, re.IGNORECASE)
-            if match:
-                return int(match.group(1))
+            if isinstance(pattern, tuple):
+                # Pattern like (r'first-quarter...', 1)
+                regex, quarter_num = pattern
+                match = re.search(regex, filename, re.IGNORECASE)
+                if match:
+                    return quarter_num
+            else:
+                match = re.search(pattern, filename, re.IGNORECASE)
+                if match:
+                    quarter_str = match.group(1)
+                    # Handle 2-digit years like '25'
+                    if len(match.group(2)) == 2:
+                        return int(quarter_str)
+                    return int(quarter_str)
 
         # Try text
         for pattern in self.QUARTER_PATTERNS:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                return int(match.group(1))
+            if isinstance(pattern, tuple):
+                regex, quarter_num = pattern
+                match = re.search(regex, text, re.IGNORECASE)
+                if match:
+                    return quarter_num
+            else:
+                match = re.search(pattern, text, re.IGNORECASE)
+                if match:
+                    return int(match.group(1))
 
         return None
 

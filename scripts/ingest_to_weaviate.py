@@ -37,18 +37,16 @@ def main():
     data_dir = Path(__file__).parent.parent / "data"
     output_dir = Path(__file__).parent.parent / "output"
 
-    # FAB documents
-    fab_documents = [
-        data_dir / "FAB-Earnings-Presentation-Q1-2025.pdf",
-        data_dir / "FAB-FS-Q1-2025-English.pdf",
-        data_dir / "FAB-Q1-2025-Results-Call.pdf",
-    ]
+    # Auto-discover all PDF files in data directory
+    fab_documents = sorted(data_dir.glob("*.pdf"))
 
-    # Check if documents exist
-    for doc_path in fab_documents:
-        if not doc_path.exists():
-            logger.error(f"Document not found: {doc_path}")
-            return
+    if not fab_documents:
+        logger.error(f"No PDF files found in {data_dir}")
+        return
+
+    logger.info(f"\nFound {len(fab_documents)} PDF files:")
+    for doc in fab_documents:
+        logger.info(f"  - {doc.name}")
 
     # Step 1: Process documents (parse, extract metadata, chunk)
     logger.info("\n" + "=" * 80)
@@ -65,6 +63,24 @@ def main():
     for doc_path in fab_documents:
         logger.info(f"\nProcessing: {doc_path.name}")
 
+        # Check if intermediate results already exist
+        doc_name_no_ext = doc_path.stem
+        intermediate_dir = output_dir / doc_path.stem
+        chunks_file = intermediate_dir / "chunks.json"
+
+        if chunks_file.exists():
+            logger.info(f"⚡ Loading cached chunks from {chunks_file}")
+            try:
+                import json
+                with open(chunks_file, 'r') as f:
+                    chunk_dicts = json.load(f)
+                all_chunks.extend(chunk_dicts)
+                logger.info(f"✓ Loaded {doc_path.name}: {len(chunk_dicts)} chunks (cached)")
+                continue
+            except Exception as e:
+                logger.warning(f"Failed to load cached chunks, reprocessing: {e}")
+
+        # Process document if not cached
         try:
             result = pipeline.ingest_document(doc_path, save_intermediate=True)
 
